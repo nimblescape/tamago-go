@@ -149,6 +149,18 @@ TEXT runtime·CallOnG0(SB),NOSPLIT,$0
 	RET
 
 // This is needed by asm_amd64.s
+// taskstart is the entry of an M on another processor core or thread
+// (see newosproc). goos.Task enters it on the g0 stack of the M, with the
+// m in R13, as the child of clone on Linux. It points the FS base at
+// m.tls, as rt0 does for m0, keeps g0 there and starts the M.
+TEXT runtime·taskstart(SB),NOSPLIT|TOPFRAME|NOFRAME,$0
+	LEAQ	m_tls(R13), DI
+	CALL	runtime·settls(SB)
+	MOVQ	m_g0(R13), R14
+	get_tls(CX)
+	MOVQ	R14, g(CX)
+	JMP	runtime·mstart(SB)
+
 TEXT runtime·settls(SB),NOSPLIT,$32
 	MOVW	CS, AX
 	ANDW	$3, AX // CPL
