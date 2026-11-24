@@ -4,6 +4,8 @@
 
 package runtime
 
+import _ "unsafe" // for go:linkname
+
 // eventRaise sets event n in eventPending, defined in sys_tamago_amd64.s.
 //
 // eventRaise should be an internal detail, but runtime/goos.RaiseEvent
