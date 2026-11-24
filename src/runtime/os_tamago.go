@@ -87,6 +87,8 @@ func osinit() {
 	} else {
 		initBloc()
 	}
+
+	breakBase = bloc
 }
 
 func readRandom(r []byte) int {

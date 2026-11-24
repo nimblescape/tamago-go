@@ -195,6 +195,9 @@ func initBloc() {
 }
 
 func sysAllocOS(n uintptr, _ string) unsafe.Pointer {
+	if p, ok := osMemAlloc(n); ok {
+		return p
+	}
 	var p uintptr
 	systemstack(func() {
 		lock(&memlock)
@@ -208,6 +211,9 @@ func sysAllocOS(n uintptr, _ string) unsafe.Pointer {
 func sysFreeOS(v unsafe.Pointer, n uintptr) {
 	if v == nil {
 		// A failed sysReserveOS returns nil, so freeing it is a no-op.
+		return
+	}
+	if osMemFree(v, n) {
 		return
 	}
 	systemstack(func() {
@@ -227,9 +233,11 @@ func sysFreeOS(v unsafe.Pointer, n uintptr) {
 }
 
 func sysUnusedOS(v unsafe.Pointer, n uintptr) {
+	osMemUnused(v, n)
 }
 
 func sysUsedOS(v unsafe.Pointer, n uintptr) {
+	osMemUsed(v, n)
 }
 
 func sysHugePageOS(v unsafe.Pointer, n uintptr) {
@@ -245,9 +253,13 @@ func sysMapOS(v unsafe.Pointer, n uintptr, _ string) {
 }
 
 func sysFaultOS(v unsafe.Pointer, n uintptr) {
+	osMemFault(v, n)
 }
 
 func sysReserveOS(v unsafe.Pointer, n uintptr, _ string) unsafe.Pointer {
+	if p, ok := osMemReserve(v, n); ok {
+		return p
+	}
 	var p uintptr
 	systemstack(func() {
 		lock(&memlock)
@@ -266,6 +278,9 @@ func sysReserveOS(v unsafe.Pointer, n uintptr, _ string) unsafe.Pointer {
 }
 
 func sysReserveAlignedSbrk(size, align uintptr) (unsafe.Pointer, uintptr) {
+	if p, n, ok := osMemReserveAligned(size, align); ok {
+		return p, n
+	}
 	var p uintptr
 	systemstack(func() {
 		lock(&memlock)
