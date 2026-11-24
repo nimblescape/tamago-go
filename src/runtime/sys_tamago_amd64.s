@@ -190,3 +190,20 @@ TEXT runtime·sigRelay(SB),NOSPLIT|NOFRAME,$0-4
 	BTSL	AX, (BX)
 done:
 	RET
+
+// eventRaise sets the argument event as pending (see event_tamago.go).
+//
+// The function is meant to be invoked, through runtime/goos.RaiseEvent,
+// within interrupt handlers and must therefore not allocate, lock or use the
+// runtime.
+TEXT runtime·eventRaise(SB),NOSPLIT|NOFRAME,$0-4
+	MOVL	n+0(FP), AX
+	CMPL	AX, $(const_numEvents)
+	JAE	done
+
+	// eventPending[n/32] |= 1 << (n%32)
+	MOVQ	$runtime·eventPending(SB), BX
+	LOCK
+	BTSL	AX, (BX)
+done:
+	RET

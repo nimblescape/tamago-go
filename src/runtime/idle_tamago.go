@@ -10,11 +10,24 @@ import (
 	"runtime/goos"
 )
 
+// interruptReady returns a parked goroutine, in _Gwaiting state, whose
+// signal (see sigReady) or event (see eventReady) an interrupt handler
+// raised, the caller must make it runnable.
+//
+//go:nosplit
+func interruptReady() *g {
+	if gp := sigReady(); gp != nil {
+		return gp
+	}
+
+	return eventReady()
+}
+
 // beforeIdle gets called by the scheduler if no goroutine is awake.
 //
 //go:yeswritebarrierrec
 func beforeIdle(now, pollUntil int64) (gp *g, otherReady bool) {
-	if gp = sigReady(); gp != nil {
+	if gp = interruptReady(); gp != nil {
 		return gp, false
 	}
 

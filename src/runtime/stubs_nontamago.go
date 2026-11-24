@@ -6,4 +6,4 @@
 
 package runtime
 
-func sigReady() *g { return nil }
+func interruptReady() *g { return nil }

@@ -3473,9 +3473,9 @@ top:
 	}
 
 	// tamago only:
-	// wake the signal receiver if a signal is pending
+	// wake the goroutine of a pending signal or event
 	if GOOS == "tamago" {
-		if gp := sigReady(); gp != nil {
+		if gp := interruptReady(); gp != nil {
 			trace := traceAcquire()
 			casgstatus(gp, _Gwaiting, _Grunnable)
 			if trace.ok() {
