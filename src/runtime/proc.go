@@ -7598,7 +7598,7 @@ const randomizeScheduler = raceenabled
 // If the run queue is full, runnext puts g on the global queue.
 // Executed only by the owner P.
 func runqput(pp *p, gp *g, next bool) {
-	if !haveSysmon && next {
+	if !haveSysmon && !timeSliced() && next {
 		// A runnext goroutine shares the same time slice as the
 		// current goroutine (inheritTime from runqget). To prevent a
 		// ping-pong pair of goroutines from starving all others, we
@@ -7606,7 +7606,8 @@ func runqput(pp *p, gp *g, next bool) {
 		// is, any set of goroutines sharing the same time slice.
 		//
 		// If there is no sysmon, we must avoid runnext entirely or
-		// risk starvation.
+		// risk starvation, unless the platform runs the time-slice
+		// check of sysmon (tamago, see timeSliced).
 		next = false
 	}
 	if randomizeScheduler && next && randn(2) == 0 {
