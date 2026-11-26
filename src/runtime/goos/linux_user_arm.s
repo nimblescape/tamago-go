@@ -14,6 +14,7 @@
 #define SYS_write		(SYS_BASE + 4)
 #define SYS_clone		(SYS_BASE + 120)
 #define SYS_mmap2		(SYS_BASE + 192)
+#define SYS_madvise		(SYS_BASE + 220)
 #define SYS_exit_group		(SYS_BASE + 248)
 #define SYS_clock_gettime	(SYS_BASE + 263)
 #define SYS_getrandom		(SYS_BASE + 384)
@@ -83,6 +84,19 @@ TEXT ·sys_getrandom(SB), $0-16
 	MOVW	$0, R2
 	MOVW	$SYS_getrandom, R7
 	SWI	$0
+	RET
+
+// func sys_madvise(addr, n uintptr, advice int32)
+TEXT ·sys_madvise(SB),NOSPLIT,$0-12
+	MOVW	addr+0(FP), R0
+	MOVW	n+4(FP), R1
+	MOVW	advice+8(FP), R2
+	MOVW	$SYS_madvise, R7
+	SWI	$0
+	MOVW	$0xfffff001, R6
+	CMP	R6, R0
+	MOVW.HI	$0, R8	// crash, see Madvise
+	MOVW.HI	R8, (R8)
 	RET
 
 // int32 clone(int32 flags, void *stack, M *mp, G *gp, void (*fn)(void));
