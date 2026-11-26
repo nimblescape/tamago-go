@@ -7,7 +7,6 @@
 package runtime
 
 import (
-	"internal/abi"
 	"internal/runtime/atomic"
 	goospkg "internal/runtime/goospkg"
 	"internal/runtime/math"
@@ -63,7 +62,7 @@ func newosproc(mp *m) {
 		exit(1)
 	}
 
-	goospkg.Task(unsafe.Pointer(uintptr(stack)+stacksize), unsafe.Pointer(mp), unsafe.Pointer(mp.g0), unsafe.Pointer(abi.FuncPCABI0(mstart)))
+	goospkg.Task(unsafe.Pointer(uintptr(stack)+stacksize), unsafe.Pointer(mp), unsafe.Pointer(mp.g0), unsafe.Pointer(taskEntry()))
 }
 
 // Called to initialize a new m (including the bootstrap m).
