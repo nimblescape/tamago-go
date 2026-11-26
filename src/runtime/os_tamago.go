@@ -49,8 +49,12 @@ func initsig(preinit bool)           {}
 func osyield()                       {}
 func osyield_no_g()                  {}
 
-const stacksize = 8192 * 1024 // 8192KB
-
+// newosproc starts mp on the next free processor (goos.Task). As on
+// Linux, the new M runs on the stack of its g0, which allocm takes from the
+// Go stacks, so that the runtime knows and checks the bounds of the stack
+// on which the M runs. A separate stack per M would take memory for each
+// processor that the runtime never checks against the bounds of g0.
+//
 // May run with m.p==nil, so write barriers are not allowed.
 //
 //go:nowritebarrier
@@ -59,13 +63,7 @@ func newosproc(mp *m) {
 		throw("newosproc: not implemented")
 	}
 
-	stack := sysAlloc(stacksize, &memstats.stacks_sys, "HW thread stack")
-	if stack == nil {
-		writeErrStr(failallocatestack)
-		exit(1)
-	}
-
-	goos.Task(unsafe.Pointer(uintptr(stack)+stacksize), unsafe.Pointer(mp), unsafe.Pointer(mp.g0), unsafe.Pointer(taskEntry()))
+	goos.Task(unsafe.Pointer(mp.g0.stack.hi), unsafe.Pointer(mp), unsafe.Pointer(mp.g0), unsafe.Pointer(taskEntry()))
 }
 
 // Called to initialize a new m (including the bootstrap m).
