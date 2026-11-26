@@ -33,6 +33,10 @@ type fsys struct {
 	cwd  *inode                    // process current directory
 	inum uint64                    // number of inodes created
 	dev  []func() (DevFile, error) // table for opening devices
+
+	// See Mount.
+	cwdName string // current directory in the file system mounted on cwd, or "."
+	mounts  int64  // number of mounted file systems
 }
 
 // DevFile is the implementation required of device files
@@ -47,6 +51,7 @@ type inode struct {
 	Stat_t
 	data []byte
 	dir  []dirent
+	mnt  *mount // file system mounted on this directory, if any
 }
 
 // A dirent describes a single directory entry.
@@ -67,7 +72,7 @@ type fsysFile struct {
 
 // newFsys creates a new file system.
 func newFsys() *fsys {
-	fs := &fsys{}
+	fs := &fsys{cwdName: "."}
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 	ip := fs.newInode()
@@ -188,6 +193,8 @@ func skipelem(path string) (elem, rest string) {
 // If parent is false, the returned ip corresponds to the given name, and elem is the empty string.
 // If parent is true, the walk stops at the next-to-last element in the name,
 // so that ip is the parent directory and elem is the final element in the path.
+// If the path lies in a mounted file system, ip is the directory that the file
+// system is mounted on, and elem is the name in it, for both values of parent.
 func (fs *fsys) namei(path string, parent bool) (ip *inode, elem string, err error) {
 	// Reject NUL in name.
 	for i := 0; i < len(path); i++ {
@@ -201,10 +208,11 @@ func (fs *fsys) namei(path string, parent bool) (ip *inode, elem string, err err
 		return nil, "", EINVAL
 	}
 
+	name := "." // name in the file system mounted on ip, if any
 	if path[0] == '/' {
 		ip = fs.root
 	} else {
-		ip = fs.cwd
+		ip, name = fs.cwd, fs.cwdName
 	}
 
 	slash := path[len(path)-1] == '/'
@@ -214,6 +222,16 @@ func (fs *fsys) namei(path string, parent bool) (ip *inode, elem string, err err
 
 	for {
 		elem, rest := skipelem(path)
+		if ip.mnt != nil {
+			if elem == "" {
+				return ip, name, nil
+			}
+			if ip, name, err = fs.mountwalk(ip, name, elem); err != nil {
+				return nil, "", err
+			}
+			path = rest
+			continue
+		}
 		if elem == "" {
 			if parent && ip.Mode&S_IFMT == S_IFDIR {
 				return ip, ".", nil
@@ -244,7 +262,7 @@ func (fs *fsys) namei(path string, parent bool) (ip *inode, elem string, err err
 		if err != nil {
 			return nil, "", err
 		}
-		ip = de.inode
+		ip, name = de.inode, "."
 		path = rest
 	}
 	if parent {
@@ -262,6 +280,9 @@ func (fs *fsys) open(name string, openmode int, mode uint32) (fileImpl, error) {
 	dp, elem, err := fs.namei(name, true)
 	if err != nil {
 		return nil, err
+	}
+	if dp.mnt != nil {
+		return dp.mnt.open(elem, openmode, mode, dirpath(name))
 	}
 	var (
 		ip  *inode
@@ -288,6 +309,9 @@ func (fs *fsys) open(name string, openmode int, mode uint32) (fileImpl, error) {
 		ip = de.inode
 		if openmode&(O_CREATE|O_EXCL) == O_CREATE|O_EXCL {
 			return nil, EEXIST
+		}
+		if ip.mnt != nil {
+			return ip.mnt.open(".", openmode, mode, dirpath(name))
 		}
 		if openmode&O_TRUNC != 0 {
 			if ip.Mode&S_IFMT == S_IFDIR {
@@ -368,6 +392,9 @@ func (f *fsysFile) read(b []byte) (int, error) {
 }
 
 func ReadDirent(fd int, buf []byte) (int, error) {
+	if f, ok := fdToMountFile(fd); ok {
+		return f.readDirent(buf)
+	}
 	f, err := fdToFsysFile(fd)
 	if err != nil {
 		return 0, err
@@ -460,25 +487,10 @@ func (f *fsysFile) preadLocked(b []byte, offset int64) (int, error) {
 		fs.atime(f.inode)
 		n := 0
 		for len(b) >= direntSize {
-			// On tamago/arm we must go through a copy of b to cast
-			// *Dirent, this is necessary as b is not guaranteed to
-			// be 32-bit aligned.
-			buf := make([]byte, len(b))
-			copy(buf, b)
-
 			src := f.inode.dir[int(offset/direntSize)]
-			dst := (*Dirent)(unsafe.Pointer(&buf[0]))
-			dst.Ino = int64(src.inode.Ino)
-			dst.Off = offset
-			dst.Reclen = direntSize
-			for i := range dst.Name {
-				dst.Name[i] = 0
-			}
-			copy(dst.Name[:], src.name)
+			putDirent(b, src.inode.Ino, offset, src.name)
 			n += direntSize
 			offset += direntSize
-
-			copy(b, buf)
 			b = b[direntSize:]
 		}
 		return n, nil
@@ -487,6 +499,19 @@ func (f *fsysFile) preadLocked(b []byte, offset int64) (int, error) {
 	fs.atime(f.inode)
 	n := copy(b, f.inode.data[offset:])
 	return n, nil
+}
+
+// putDirent writes a Dirent record with the inode number ino, the offset off
+// and the name into b, which holds at least direntSize bytes.
+func putDirent(b []byte, ino uint64, off int64, name string) {
+	// On tamago/arm a *Dirent must be 32-bit aligned, which b is not
+	// guaranteed to be, so the record is built in d and copied into b.
+	var d Dirent
+	d.Ino = int64(ino)
+	d.Off = off
+	d.Reclen = direntSize
+	copy(d.Name[:], name)
+	copy(b, unsafe.Slice((*byte)(unsafe.Pointer(&d)), direntSize))
 }
 
 func (f *fsysFile) pwriteLocked(b []byte, offset int64) (int, error) {
@@ -544,9 +569,12 @@ func Stat(path string, st *Stat_t) error {
 	fsinit()
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
-	ip, _, err := fs.namei(path, false)
+	ip, elem, err := fs.namei(path, false)
 	if err != nil {
 		return err
+	}
+	if ip.mnt != nil {
+		return ip.mnt.stat(elem, dirpath(path), st)
 	}
 	*st = ip.Stat_t
 	return nil
@@ -564,8 +592,11 @@ func unlink(path string, isdir bool) error {
 	if err != nil {
 		return err
 	}
-	if elem == "." || elem == ".." {
+	if dotelem(path) {
 		return EINVAL
+	}
+	if dp.mnt != nil {
+		return dp.mnt.unlink(elem, isdir, dirpath(path))
 	}
 	de, _, err := fs.dirlookup(dp, elem)
 	if err != nil {
@@ -574,6 +605,9 @@ func unlink(path string, isdir bool) error {
 	if isdir {
 		if de.inode.Mode&S_IFMT != S_IFDIR {
 			return ENOTDIR
+		}
+		if de.inode.mnt != nil {
+			return EBUSY
 		}
 		if len(de.inode.dir) != 2 {
 			return ENOTEMPTY
@@ -606,11 +640,17 @@ func Chmod(path string, mode uint32) error {
 	if err != nil {
 		return err
 	}
+	if ip.mnt != nil {
+		return ENOSYS
+	}
 	ip.Mode = ip.Mode&^0777 | mode&0777
 	return nil
 }
 
 func Fchmod(fd int, mode uint32) error {
+	if _, ok := fdToMountFile(fd); ok {
+		return ENOSYS
+	}
 	f, err := fdToFsysFile(fd)
 	if err != nil {
 		return err
@@ -629,6 +669,9 @@ func Chown(path string, uid, gid int) error {
 	if err != nil {
 		return err
 	}
+	if ip.mnt != nil {
+		return ENOSYS
+	}
 	if uid != -1 {
 		ip.Uid = uint32(uid)
 	}
@@ -639,6 +682,9 @@ func Chown(path string, uid, gid int) error {
 }
 
 func Fchown(fd int, uid, gid int) error {
+	if _, ok := fdToMountFile(fd); ok {
+		return ENOSYS
+	}
 	f, err := fdToFsysFile(fd)
 	if err != nil {
 		return err
@@ -670,6 +716,9 @@ func UtimesNano(path string, ts []Timespec) error {
 	if err != nil {
 		return err
 	}
+	if ip.mnt != nil {
+		return ENOSYS
+	}
 
 	if ts[0].Nsec != -2 {
 		ip.Atime = ts[0].Sec
@@ -695,6 +744,12 @@ func Link(path, link string) error {
 	dp, elem, err := fs.namei(link, true)
 	if err != nil {
 		return err
+	}
+	if ip.mnt != nil || dp.mnt != nil {
+		if ip.mnt != dp.mnt {
+			return EXDEV
+		}
+		return ENOSYS
 	}
 	if ip.Mode&S_IFMT == S_IFDIR {
 		return EPERM
@@ -736,14 +791,23 @@ func Rename(from, to string) error {
 	if err != nil {
 		return err
 	}
-	if felem == "." || felem == ".." || telem == "." || telem == ".." {
+	if dotelem(from) || dotelem(to) {
 		return EINVAL
+	}
+	if fdp.mnt != nil || tdp.mnt != nil {
+		if fdp.mnt != tdp.mnt {
+			return EXDEV
+		}
+		return fdp.mnt.rename(felem, telem, dirpath(from) || dirpath(to))
 	}
 	fde, _, err := fs.dirlookup(fdp, felem)
 	if err != nil {
 		return err
 	}
 	ip := fde.inode
+	if ip.mnt != nil {
+		return EBUSY
+	}
 
 	if ip.Mode&S_IFMT == S_IFDIR && fs.subtreeContains(ip, tdp) {
 		// a directory cannot be moved into itself or its own subtree
@@ -753,6 +817,9 @@ func Rename(from, to string) error {
 	if tde, _, err := fs.dirlookup(tdp, telem); err == nil {
 		if tde.inode == ip {
 			return nil
+		}
+		if tde.inode.mnt != nil {
+			return EBUSY
 		}
 		switch {
 		case ip.Mode&S_IFMT != S_IFDIR && tde.inode.Mode&S_IFMT == S_IFDIR:
@@ -819,14 +886,20 @@ func Truncate(path string, length int64) error {
 	fsinit()
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
-	ip, _, err := fs.namei(path, false)
+	ip, elem, err := fs.namei(path, false)
 	if err != nil {
 		return err
+	}
+	if ip.mnt != nil {
+		return ip.mnt.truncate(elem, dirpath(path), length)
 	}
 	return fs.truncate(ip, length)
 }
 
 func Ftruncate(fd int, length int64) error {
+	if f, ok := fdToMountFile(fd); ok {
+		return f.truncate(length)
+	}
 	f, err := fdToFsysFile(fd)
 	if err != nil {
 		return err
@@ -844,15 +917,21 @@ func Chdir(path string) error {
 func chdir(path string) error {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
-	ip, _, err := fs.namei(path, false)
+	ip, elem, err := fs.namei(path, false)
 	if err != nil {
 		return err
 	}
-	fs.cwd = ip
+	if ip.mnt != nil {
+		return ip.mnt.chdir(elem)
+	}
+	fs.cwd, fs.cwdName = ip, "."
 	return nil
 }
 
 func Fchdir(fd int) error {
+	if f, ok := fdToMountFile(fd); ok {
+		return f.chdir()
+	}
 	f, err := fdToFsysFile(fd)
 	if err != nil {
 		return err
@@ -862,7 +941,7 @@ func Fchdir(fd int) error {
 	if f.inode.Mode&S_IFMT != S_IFDIR {
 		return ENOTDIR
 	}
-	fs.cwd = f.inode
+	fs.cwd, fs.cwdName = f.inode, "."
 	return nil
 }
 
@@ -875,6 +954,9 @@ func Symlink(path, link string) error {
 }
 
 func Fsync(fd int) error {
+	if f, ok := fdToMountFile(fd); ok {
+		return f.sync()
+	}
 	return nil
 }
 
