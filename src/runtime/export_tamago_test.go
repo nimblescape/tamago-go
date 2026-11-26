@@ -20,9 +20,9 @@ func WaitSignal(sig int) { signal_wait(uint32(sig)) }
 func SignalWaiterParked(sig int) bool { return sigDirectWaiter[sig].Load() != 0 }
 
 // SysUnusedZeroes fills n bytes of new memory, gives them back with
-// sysUnused and reports whether they read as zero afterwards. It also
-// reports whether the runtime relies on that, which it does when
-// needZeroAfterSysUnused reports false.
+// sysUnused and reports whether they read as zero after sysUsed, before
+// their next use. It also reports whether the runtime relies on that, which
+// it does when needZeroAfterSysUnused reports false.
 func SysUnusedZeroes(n uintptr) (zero, relied bool) {
 	systemstack(func() {
 		p := sysAlloc(n, testSysStat, "test")
@@ -34,6 +34,7 @@ func SysUnusedZeroes(n uintptr) (zero, relied bool) {
 			b[i] = 0xff
 		}
 		sysUnused(p, n)
+		sysUsed(p, n, n)
 		zero = true
 		for _, c := range b {
 			if c != 0 {
@@ -41,7 +42,6 @@ func SysUnusedZeroes(n uintptr) (zero, relied bool) {
 				break
 			}
 		}
-		sysUsed(p, n, n)
 		sysFree(p, n, testSysStat)
 	})
 	return zero, !needZeroAfterSysUnused()
