@@ -48,7 +48,7 @@ var (
 	BlocMax = uintptr(ramStart+ramSize)
 	Brk     = brk
 	Exit    = sys_exit_group
-	Madvise = sys_madvise
+	Madvise = madvise
 
 	Idle   func(until int64)
 	ProcID func() uint64
@@ -74,6 +74,14 @@ func clone(flags int32, stk, mp, gp, fn unsafe.Pointer) int32
 // madvise fails, because the runtime would then take memory that still holds
 // old data for zero.
 func sys_madvise(addr, n uintptr, advice int32)
+
+// madvise gives the frames of a range back with MADV_DONTNEED (4). Linux
+// backs each page on its first access, so the other advice needs no call.
+func madvise(addr, n uintptr, advice int32) {
+	if advice == 4 {
+		sys_madvise(addr, n, advice)
+	}
+}
 
 // brk raises the end of the heap to addr. CPUInit maps all of the RAM, and
 // Linux backs each page on its first access, so brk only checks the limit.
