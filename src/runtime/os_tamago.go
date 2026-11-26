@@ -225,10 +225,6 @@ func semawakeup(mp *m) {
 	}
 }
 
-const preemptMSupported = false
-
-func preemptM(mp *m) {}
-
 func minit() {
 	if goospkg.ProcID == nil {
 		return
@@ -236,6 +232,12 @@ func minit() {
 
 	gp := getg()
 	gp.m.procid = goospkg.ProcID()
+
+	// The first preemption interrupt starts the time-slice check on the
+	// processor of the M (see preemptStart).
+	if preemptRaise != nil {
+		preemptRaise(gp.m.procid)
+	}
 }
 
 // Stubs so tests can link correctly. These should never be called.

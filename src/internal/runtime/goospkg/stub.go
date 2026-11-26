@@ -121,6 +121,25 @@ func Signal(s int) {}
 // Its implementation is linked from the Go runtime, rather than GOOSPKG.
 func WaitSignal(s int) {}
 
+// StartPreemption turns on the preemption of goroutines that run longer than
+// their time slice, as sysmon and signals do on other operating systems.
+// raise raises the preemption interrupt on the processor with the
+// identifier procid (see [ProcID]). After the first one, the platform
+// raises the interrupt on each processor at least every 10ms, and its gate
+// jumps to [PreemptInterrupt]. It must be called before the runtime starts
+// a second thread, after [ProcID] is set. Only amd64 implements it for now.
+//
+// Its implementation is linked from the Go runtime, rather than GOOSPKG.
+func StartPreemption(raise func(procid uint64)) {}
+
+// PreemptInterrupt is the handler of the preemption interrupt (see
+// [StartPreemption]). The gate of the interrupt, written in Go assembly,
+// jumps to it with interrupts disabled, after the end of the interrupt, and
+// with the frame of the interrupt on the stack of the stopped code.
+//
+// Its implementation is linked from the Go runtime, rather than GOOSPKG.
+func PreemptInterrupt() {}
+
 // SystemStack runs fn on a system stack, it is only meant for use by exception
 // handlers on unrecoverable errors.
 //
