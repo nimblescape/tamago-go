@@ -9,9 +9,13 @@ import (
 	"unsafe"
 )
 
-// _MADV_DONTNEED is the advice of goospkg.Madvise that gives the frames of
-// a range back. It has the value of MADV_DONTNEED on Linux.
-const _MADV_DONTNEED = 4
+// The advice of goospkg.Madvise, with the values of madvise on Linux:
+// _MADV_DONTNEED gives the frames of a range back, and _MADV_POPULATE_WRITE
+// backs each page of a range with a frame filled with zeros.
+const (
+	_MADV_DONTNEED       = 4
+	_MADV_POPULATE_WRITE = 23
+)
 
 func sbrk(n uintptr) unsafe.Pointer {
 	// Plan 9 sbrk from /sys/src/libc/9sys/sbrk.c
@@ -20,8 +24,9 @@ func sbrk(n uintptr) unsafe.Pointer {
 	if bl+n > blocMax {
 		switch {
 		case goospkg.Brk != nil:
-			// As brk_ on Plan 9: the platform maps the memory up
-			// to bl+n, and the new memory reads as zero.
+			// As brk_ on Plan 9: the platform lets the heap grow
+			// up to bl+n. The runtime uses the new memory only
+			// after sysUsedOS, which also sysAllocOS calls.
 			if !goospkg.Brk(bl + n) {
 				return nil
 			}
@@ -38,6 +43,18 @@ func sbrk(n uintptr) unsafe.Pointer {
 	}
 	bloc += n
 	return unsafe.Pointer(bl)
+}
+
+// sysUsedOS lets the platform back [v, v+n) before the runtime uses it, if
+// it implements goospkg.Madvise, as madvise with MADV_POPULATE_WRITE does on
+// Linux. The runtime then never touches a page without a frame. This
+// matters on a platform that runs Go in its most privileged mode: a page
+// fault on the stack in use cannot be served there, because the processor
+// stores the state of the fault on that stack.
+func sysUsedOS(v unsafe.Pointer, n uintptr) {
+	if goospkg.Madvise != nil {
+		goospkg.Madvise(uintptr(v), n, _MADV_POPULATE_WRITE)
+	}
 }
 
 // sysUnusedOS gives the frames of [v, v+n) back to the platform, if it
