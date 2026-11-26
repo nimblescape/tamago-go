@@ -116,25 +116,9 @@ nog1:
 	// In child, on new stack.
 	MOVQ	SI, SP
 
-	// If g or m are nil, skip Go-related setup.
-	CMPQ	R13, $0    // m
-	JEQ	nog2
-	CMPQ	R9, $0    // g
-	JEQ	nog2
-
-	// In child, set up new stack
-	MOVQ	R9, g
-	MOVQ	g, DI
-	CALL	·settls<>(SB)
-	MOVQ	g, (TLS)
-
-	MOVQ	TLS, CX
-	MOVQ	R13, 48(R9) // g_m(R9)
-	MOVQ	R9, 0(CX)(TLS*1)
-	MOVQ	R9, R14 // set g register
-
-nog2:
-	// Call fn. This is the PC of an ABI0 function.
+	// Call fn, the PC of an ABI0 function, with g set to gp. fn sets up
+	// the TLS block of the new thread itself (see runtime·taskstart).
+	MOVQ	R9, R14
 	CALL	R12
 
 	// It shouldn't return. If it does, exit that thread.
@@ -142,14 +126,3 @@ nog2:
 	MOVL	$SYS_exit, AX
 	SYSCALL
 	JMP	-3(PC)	// keep exiting
-
-TEXT ·settls<>(SB),NOSPLIT,$0
-	ADDQ	$8, DI	// ELF wants to use -8(FS)
-	MOVQ	DI, SI
-	MOVQ	$0x1002, DI	// ARCH_SET_FS
-	MOVQ	$SYS_arch_prctl, AX
-	SYSCALL
-	CMPQ	AX, $0xfffffffffffff001
-	JLS	2(PC)
-	MOVL	$0xf1, 0xf1  // crash
-	RET

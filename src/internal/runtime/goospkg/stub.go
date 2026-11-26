@@ -143,6 +143,9 @@ var (
 
 	// Task is an optional function which can be set to provide an
 	// implementation for HW/OS threading (e.g. [runtime.newosproc]).
+	// It runs fn on another processor or thread, on the stack that ends at
+	// sp and with g set to gp. On amd64, fn sets up the TLS block of the
+	// thread itself, so Task must not write it.
 	Task func(sp, mp, gp, fn unsafe.Pointer)
 
 	// Wake is an optional function which can be set to provide a wake up
