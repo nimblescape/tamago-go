@@ -3513,6 +3513,11 @@ top:
 			return gp, false, true
 		}
 		now = tnow
+
+		// A goroutine that waits for a timer of a P that runs a
+		// dedicated mark worker would otherwise wait until that
+		// worker stops, which can be at the end of the mark phase.
+		now = runDedicatedTimers(pp, now)
 	}
 
 	// Check the global runnable queue once in a while to ensure fairness.
@@ -3925,8 +3930,9 @@ func stealWork(now int64) (gp *g, inheritTime bool, rnow, pollUntil int64, newWo
 				continue
 			}
 
-			// Steal timers from p2. This call to checkTimers is the only place
-			// where we might hold a lock on a different P's timers. We do this
+			// Steal timers from p2. This call to checkTimers and the one in
+			// runDedicatedTimers are the only places where we might hold a
+			// lock on a different P's timers. We do this
 			// once on the last pass before checking runnext because stealing
 			// from the other P's runnext should be the last resort, so if there
 			// are timers to steal do that first.
@@ -3973,6 +3979,34 @@ func stealWork(now int64) (gp *g, inheritTime bool, rnow, pollUntil int64, newWo
 	// made some goroutine ready that we missed. Indicate the next timer to
 	// wait for.
 	return nil, false, now, pollUntil, ranTimer
+}
+
+// runDedicatedTimers runs the expired timers of the Ps that run a
+// dedicated mark worker. Such a P runs its own timers only when its worker
+// stops, and stealWork runs the timers of other Ps only when a P has no
+// other work. So when no P is idle, a goroutine that waits for a timer of
+// such a P waits until the worker stops, which can be at the end of the
+// mark phase. The goroutines that the timers make ready go to the run
+// queue of pp.
+//
+// now is the current time or 0. runDedicatedTimers returns now, or the
+// current time if it had to read it.
+func runDedicatedTimers(pp *p, now int64) int64 {
+	mask := work.dedicatedpMask
+	for i := range mask {
+		bits := atomic.Load(&mask[i])
+		for bits != 0 {
+			id := i*32 + sys.TrailingZeros32(bits)
+			bits &= bits - 1
+			if id >= len(allp) {
+				break
+			}
+			if p2 := allp[id]; p2 != pp {
+				now, _, _ = p2.timers.check(now, nil)
+			}
+		}
+	}
+	return now
 }
 
 // Check all Ps for a runnable G to steal.
@@ -6188,6 +6222,7 @@ func procresize(nprocs int32) *p {
 		idlepMask = idlepMask.resize(nprocs)
 		timerpMask = timerpMask.resize(nprocs)
 		work.spanqMask = work.spanqMask.resize(nprocs)
+		work.dedicatedpMask = work.dedicatedpMask.resize(nprocs)
 		unlock(&allpLock)
 	}
 
@@ -6253,6 +6288,7 @@ func procresize(nprocs int32) *p {
 		idlepMask = idlepMask.resize(nprocs)
 		timerpMask = timerpMask.resize(nprocs)
 		work.spanqMask = work.spanqMask.resize(nprocs)
+		work.dedicatedpMask = work.dedicatedpMask.resize(nprocs)
 		unlock(&allpLock)
 	}
 
