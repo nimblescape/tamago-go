@@ -10,6 +10,8 @@ import (
 )
 
 // Defined by the runtime package.
+func signal_disable(uint32)
+func signal_enable(uint32)
 func signal_recv() uint32
 
 func init() {
@@ -37,9 +39,12 @@ func signum(sig os.Signal) int {
 	}
 }
 
-func enableSignal(sig int)  {}
-func disableSignal(sig int) {}
-func ignoreSignal(sig int)  {}
+// The loop receives only the enabled signals, so that a goroutine can
+// receive any other signal with WaitSignal of the GOOSPKG package (see
+// runtime/sigqueue_tamago.go).
+func enableSignal(sig int)  { signal_enable(uint32(sig)) }
+func disableSignal(sig int) { signal_disable(uint32(sig)) }
+func ignoreSignal(sig int)  { signal_disable(uint32(sig)) }
 
 func signalIgnored(sig int) bool {
 	return false

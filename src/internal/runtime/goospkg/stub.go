@@ -98,11 +98,28 @@ func WriteConsole(c byte) {}
 // runtime setup (post World start).
 func InitHW1() {}
 
-// Signal delivers a signal to be handled through [signal.Notify].
+// Signal delivers a signal to be handled through [signal.Notify], or by the
+// goroutine that waits for it with [WaitSignal].
 //
 // Its implementation is linked from the Go runtime, rather than GOOSPKG, and
 // is safe to be called from interrupt handlers written in Go assembly.
 func Signal(s int) {}
+
+// WaitSignal blocks the calling goroutine until signal s is raised with
+// [Signal], and clears it. A signal raised while the goroutine does not
+// wait stays pending, and a signal raised more than once before a wait
+// counts once. At most one goroutine waits for a signal at a time.
+//
+// WaitSignal wakes its goroutine on the processor that handles the signal
+// first, without the goroutine of the os/signal package that relays the
+// signals of [signal.Notify]. So a device with one interrupt for each of
+// its queues, such as a network card with a receive queue for each
+// processor, can serve each queue with its own goroutine. Once a goroutine
+// has waited for a signal with WaitSignal, [signal.Notify] no longer
+// receives it.
+//
+// Its implementation is linked from the Go runtime, rather than GOOSPKG.
+func WaitSignal(s int) {}
 
 // SystemStack runs fn on a system stack, it is only meant for use by exception
 // handlers on unrecoverable errors.
