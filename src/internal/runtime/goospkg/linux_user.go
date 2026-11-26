@@ -46,7 +46,9 @@ const (
 var (
 	Bloc    = uintptr(ramStart)
 	BlocMax = uintptr(ramStart+ramSize)
+	Brk     = brk
 	Exit    = sys_exit_group
+	Madvise = sys_madvise
 
 	Idle   func(until int64)
 	ProcID func() uint64
@@ -67,6 +69,17 @@ func sys_getrandom(b []byte, n int)
 
 //go:noescape
 func clone(flags int32, stk, mp, gp, fn unsafe.Pointer) int32
+
+// sys_madvise calls madvise (defined in linux_user*.s). It crashes if
+// madvise fails, because the runtime would then take memory that still holds
+// old data for zero.
+func sys_madvise(addr, n uintptr, advice int32)
+
+// brk raises the end of the heap to addr. CPUInit maps all of the RAM, and
+// Linux backs each page on its first access, so brk only checks the limit.
+func brk(addr uintptr) bool {
+	return addr <= BlocMax
+}
 
 func GetRandomData(b []byte) {
 	sys_getrandom(b, len(b))
