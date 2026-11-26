@@ -148,6 +148,18 @@ TEXT runtime·CallOnG0(SB),NOSPLIT,$0
 	JMP	runtime·systemstack(SB)
 	RET
 
+// taskstart is the entry of an M that goos.Task starts (see
+// newosproc). Task enters it on the stack of the M with g (R14) set to g0,
+// as it enters every function that it starts. taskstart points the FS base
+// at m.tls, as rt0 does for m0, keeps g0 there and starts the M.
+TEXT runtime·taskstart(SB),NOSPLIT|TOPFRAME|NOFRAME,$0
+	MOVQ	g_m(R14), DI
+	LEAQ	m_tls(DI), DI
+	CALL	runtime·settls(SB)
+	get_tls(CX)
+	MOVQ	R14, g(CX)
+	JMP	runtime·mstart(SB)
+
 // This is needed by asm_amd64.s
 TEXT runtime·settls(SB),NOSPLIT,$32
 	MOVW	CS, AX
