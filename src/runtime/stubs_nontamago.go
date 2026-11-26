@@ -7,3 +7,5 @@
 package runtime
 
 func sigReady() *g { return nil }
+
+func timeSliced() bool { return false }
