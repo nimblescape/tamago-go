@@ -49,9 +49,12 @@ var (
 // most of the gsignal stack to preemptHandler.
 const preemptStateLimit = 16 << 10
 
-// preemptInterrupt is the handler of the preemption interrupt, defined in
-// preempt_tamago_amd64.s. The gate of the interrupt in the GOOSPKG overlay
-// jumps to it through goospkg.PreemptInterrupt.
+// goospkg.PreemptInterrupt is the handler of the preemption interrupt, it
+// is defined in preempt_tamago_amd64.s and this declaration generates its
+// ABI wrapper, so that the gate of the interrupt in any package of the
+// platform can jump to it.
+//
+//go:linkname preemptInterrupt internal/runtime/goospkg.PreemptInterrupt
 func preemptInterrupt()
 
 // defined in preempt_tamago_amd64.s
