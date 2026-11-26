@@ -639,16 +639,18 @@ func Chown(path string, uid, gid int) error {
 }
 
 func Fchown(fd int, uid, gid int) error {
-	fs.mu.Lock()
-	defer fs.mu.Unlock()
 	f, err := fdToFsysFile(fd)
 	if err != nil {
 		return err
 	}
 	f.fsys.mu.Lock()
 	defer f.fsys.mu.Unlock()
-	f.inode.Uid = uint32(uid)
-	f.inode.Gid = uint32(gid)
+	if uid != -1 {
+		f.inode.Uid = uint32(uid)
+	}
+	if gid != -1 {
+		f.inode.Gid = uint32(gid)
+	}
 	return nil
 }
 
