@@ -350,6 +350,13 @@ type workType struct {
 	spanqMask pMask
 	_         cpu.CacheLinePad // prevents false-sharing between spanqMask and everything else
 
+	// dedicatedpMask is a bitmap of the Ps that run a dedicated mark
+	// worker. Such a P runs its own timers only when its worker stops,
+	// which can be at the end of the mark phase, so other Ps run its
+	// expired timers in findRunnable. Set and cleared by the owning P.
+	dedicatedpMask pMask
+	_              cpu.CacheLinePad // prevents false-sharing between dedicatedpMask and everything else
+
 	// List of all spanSPMCs.
 	//
 	// Only used if goexperiment.GreenTeaGC.
@@ -1875,6 +1882,9 @@ func gcBgMarkWorker(ready chan struct{}) {
 			default:
 				throw("gcBgMarkWorker: unexpected gcMarkWorkerMode")
 			case gcMarkWorkerDedicatedMode:
+				// This P does not run its timers while it
+				// drains. Let other Ps run its expired timers.
+				work.dedicatedpMask.set(pp.id)
 				gcDrainMarkWorkerDedicated(&pp.gcw, true)
 				if gp.preempt {
 					// We were preempted. This is
@@ -1891,6 +1901,7 @@ func gcBgMarkWorker(ready chan struct{}) {
 				// Go back to draining, this time
 				// without preemption.
 				gcDrainMarkWorkerDedicated(&pp.gcw, false)
+				work.dedicatedpMask.clear(pp.id)
 			case gcMarkWorkerFractionalMode:
 				gcDrainMarkWorkerFractional(&pp.gcw)
 			case gcMarkWorkerIdleMode:
