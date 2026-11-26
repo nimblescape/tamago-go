@@ -355,6 +355,7 @@ type workType struct {
 	// which can be at the end of the mark phase, so other Ps run its
 	// expired timers in findRunnable. Set and cleared by the owning P.
 	dedicatedpMask pMask
+	_              uint32           // keeps the 64-bit alignment of bytesMarked on 32-bit
 	_              cpu.CacheLinePad // prevents false-sharing between dedicatedpMask and everything else
 
 	// List of all spanSPMCs.
