@@ -22,6 +22,9 @@ func sbrk(n uintptr) unsafe.Pointer {
 	return unsafe.Pointer(bl)
 }
 
+func sysUsedOS(v unsafe.Pointer, n uintptr) {
+}
+
 func sysUnusedOS(v unsafe.Pointer, n uintptr) {
 }
 

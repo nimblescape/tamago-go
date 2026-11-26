@@ -145,23 +145,32 @@ var (
 
 	// Brk is an optional function which can be set to back the heap with
 	// virtual memory, as brk(2) does on Linux. The runtime calls it to
-	// raise the end of the heap to addr, and it reports whether the
-	// memory up to addr is mapped. The new memory must read as zero, and
-	// the platform can give each page a frame on its first access. It runs
-	// on the system stack with runtime locks held, so it must not allocate
-	// memory or block. When used it must be set in [Hwinit0] or with a
-	// static initializer, and it must not change afterwards.
+	// raise the end of the heap to addr, and it reports whether the heap
+	// may grow up to addr. Brk needs to back no memory: the runtime uses
+	// a page of the new memory only after it called Madvise with the
+	// advice MADV_POPULATE_WRITE for it. Brk runs on the system stack with
+	// runtime locks held, so it must not allocate memory or block. When
+	// used it must be set in [Hwinit0] or with a static initializer, and
+	// it must not change afterwards, and Madvise must be set as well.
 	Brk func(addr uintptr) bool
 
-	// Madvise is an optional function which can be set to give memory
-	// back, as madvise(2) does on Linux. The runtime calls it with the
-	// advice MADV_DONTNEED (4) for heap pages that it does not use. The
-	// platform can then release their frames, and the pages must read as
-	// zero on their next access. Other advice can be ignored. It runs on
-	// the system stack, so it must not allocate memory or block. When used
-	// it must be set in [Hwinit0] or with a static initializer, and it must
-	// not change afterwards, because the runtime then relies on it to zero
-	// the pages.
+	// Madvise is an optional function which can be set to back memory and
+	// to give it back, as madvise(2) does on Linux. The runtime calls it
+	// with two advice values:
+	//
+	//   - MADV_POPULATE_WRITE (23) before it uses a range of the heap. The
+	//     platform must then back each page of the range that has no frame
+	//     with a frame filled with zeros, so that an access does not fault.
+	//     It must keep the pages that have a frame.
+	//   - MADV_DONTNEED (4) for heap pages that it does not use. The
+	//     platform can then release their frames, and the pages must read
+	//     as zero after the next MADV_POPULATE_WRITE.
+	//
+	// Other advice can be ignored. Madvise runs on the system stack, so it
+	// must not allocate memory or block. A lack of memory is fatal. When
+	// used it must be set in [Hwinit0] or with a static initializer, and
+	// it must not change afterwards, because the runtime then relies on it
+	// to back and to zero the pages.
 	Madvise func(addr, n uintptr, advice int32)
 
 	// Exit is an optional function which can be set to override default
