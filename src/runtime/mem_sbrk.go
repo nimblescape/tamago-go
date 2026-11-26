@@ -226,9 +226,6 @@ func sysFreeOS(v unsafe.Pointer, n uintptr) {
 	})
 }
 
-func sysUnusedOS(v unsafe.Pointer, n uintptr) {
-}
-
 func sysUsedOS(v unsafe.Pointer, n uintptr) {
 }
 
@@ -299,8 +296,4 @@ func sysReserveAlignedSbrk(size, align uintptr) (unsafe.Pointer, uintptr) {
 		unlock(&memlock)
 	})
 	return unsafe.Pointer(p), size
-}
-
-func needZeroAfterSysUnusedOS() bool {
-	return true
 }

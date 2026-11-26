@@ -22,6 +22,13 @@ func sbrk(n uintptr) unsafe.Pointer {
 	return unsafe.Pointer(bl)
 }
 
+func sysUnusedOS(v unsafe.Pointer, n uintptr) {
+}
+
+func needZeroAfterSysUnusedOS() bool {
+	return true
+}
+
 // Implemented in src/runtime/sys_wasm.s
 func growMemory(pages int32) int32
 func currentMemory() int32
