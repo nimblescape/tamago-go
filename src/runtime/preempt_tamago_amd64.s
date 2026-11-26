@@ -13,7 +13,7 @@
 // reads after the call.
 #define LOCALS 32
 
-// preemptInterrupt is the handler of the preemption interrupt (see
+// goospkg.PreemptInterrupt is the handler of the preemption interrupt (see
 // preemptStart). The gate of the interrupt jumps to it with interrupts
 // disabled, after the end of the interrupt, and with the frame of the
 // interrupt (RIP, CS, RFLAGS, RSP, SS) at 0(SP), on the stack of the
@@ -28,7 +28,7 @@
 // On the stopped stack it uses 32 bytes below the frame of the interrupt,
 // which the StackSystem bytes of every Go stack hold. It returns at once if
 // the processor runs no M or if g is gsignal.
-TEXT runtime·preemptInterrupt(SB),NOSPLIT|NOFRAME,$0
+TEXT internal∕runtime∕goospkg·PreemptInterrupt(SB),NOSPLIT|NOFRAME,$0
 	PUSHQ	DX
 	PUSHQ	CX
 	PUSHQ	BX
@@ -180,10 +180,3 @@ TEXT runtime·xsaveSize(SB),NOSPLIT,$0-4
 	CPUID
 	MOVL	BX, ret+0(FP)
 	RET
-
-// func PreemptInterrupt()
-//
-// The handler of the preemption interrupt for the gate of the interrupt in
-// the GOOSPKG overlay, which jumps to it as described at preemptInterrupt.
-TEXT internal∕runtime∕goospkg·PreemptInterrupt(SB),NOSPLIT|NOFRAME,$0
-	JMP	runtime·preemptInterrupt(SB)
