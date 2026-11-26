@@ -19,3 +19,10 @@ func sbrk(n uintptr) unsafe.Pointer {
 	bloc += n
 	return unsafe.Pointer(bl)
 }
+
+func sysUnusedOS(v unsafe.Pointer, n uintptr) {
+}
+
+func needZeroAfterSysUnusedOS() bool {
+	return true
+}

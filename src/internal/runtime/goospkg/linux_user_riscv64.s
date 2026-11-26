@@ -13,6 +13,7 @@
 #define SYS_clock_gettime	113
 #define SYS_clone		220
 #define SYS_mmap		222
+#define SYS_madvise		233
 #define SYS_getrandom		278
 
 #define CLOCK_REALTIME	0
@@ -75,6 +76,18 @@ TEXT ·sys_getrandom(SB), $0-32
 	MOV	$0, A2
 	MOV	$SYS_getrandom, A7
 	ECALL
+	RET
+
+// func sys_madvise(addr, n uintptr, advice int32)
+TEXT ·sys_madvise(SB),NOSPLIT,$0-20
+	MOV	addr+0(FP), A0
+	MOV	n+8(FP), A1
+	MOVW	advice+16(FP), A2
+	MOV	$SYS_madvise, A7
+	ECALL
+	MOV	$-4096, T0
+	BLTU	A0, T0, 2(PC)
+	WORD	$0	// crash, see Madvise
 	RET
 
 // func clone(flags int32, stk, mp, gp, fn unsafe.Pointer) int32

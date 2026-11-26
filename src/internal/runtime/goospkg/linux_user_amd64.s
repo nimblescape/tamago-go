@@ -9,6 +9,7 @@
 
 #define SYS_write		1
 #define SYS_mmap		9
+#define SYS_madvise		28
 #define SYS_clone		56
 #define SYS_exit		60
 #define SYS_arch_prctl		158
@@ -81,6 +82,18 @@ TEXT ·sys_getrandom(SB), $0-32
 	MOVL	$0, DX
 	MOVL	$SYS_getrandom, AX
 	SYSCALL
+	RET
+
+// func sys_madvise(addr, n uintptr, advice int32)
+TEXT ·sys_madvise(SB),NOSPLIT,$0-20
+	MOVQ	addr+0(FP), DI
+	MOVQ	n+8(FP), SI
+	MOVL	advice+16(FP), DX
+	MOVL	$SYS_madvise, AX
+	SYSCALL
+	CMPQ	AX, $0xfffffffffffff001
+	JLS	2(PC)
+	MOVL	$0xf1, 0xf1	// crash, see Madvise
 	RET
 
 // int32 clone(int32 flags, void *stk, M *mp, G *gp, void (*fn)(void));
