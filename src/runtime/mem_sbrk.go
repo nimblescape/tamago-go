@@ -108,6 +108,11 @@ func memAllocNoGrow(n uintptr) unsafe.Pointer {
 //go:systemstack
 func memFree(ap unsafe.Pointer, n uintptr) {
 	n = memRound(n)
+	// The free list keeps its headers in the free memory, so the
+	// platform backs the memory before it is written. The memory may
+	// come straight from sbrk, such as the gap that
+	// sysReserveAlignedSbrk skips for the alignment.
+	sysUsedOS(ap, n)
 	memclrNoHeapPointers(ap, n)
 	bp := (*memHdr)(ap)
 	bp.size = n
@@ -201,6 +206,11 @@ func sysAllocOS(n uintptr, _ string) unsafe.Pointer {
 		p = uintptr(memAlloc(n))
 		memCheck()
 		unlock(&memlock)
+		if p != 0 {
+			// The memory of sysAlloc is Ready, so the platform
+			// backs it before the runtime uses it.
+			sysUsedOS(unsafe.Pointer(p), memRound(n))
+		}
 	})
 	return unsafe.Pointer(p)
 }
@@ -216,6 +226,9 @@ func sysFreeOS(v unsafe.Pointer, n uintptr) {
 			// Address range being freed is at the end of memory,
 			// so record a new lower value for end of memory.
 			// Can't actually shrink address space because segment is shared.
+			// The platform backs the memory before it is cleared, as
+			// in memFree.
+			sysUsedOS(v, n)
 			memclrNoHeapPointers(v, n)
 			bloc -= n
 		} else {
@@ -224,9 +237,6 @@ func sysFreeOS(v unsafe.Pointer, n uintptr) {
 		}
 		unlock(&memlock)
 	})
-}
-
-func sysUsedOS(v unsafe.Pointer, n uintptr) {
 }
 
 func sysHugePageOS(v unsafe.Pointer, n uintptr) {
