@@ -1271,6 +1271,7 @@ func (t *tester) internalLinkPIE() bool {
 	case "darwin-amd64", "darwin-arm64",
 		"linux-amd64", "linux-arm64", "linux-loong64", "linux-ppc64", "linux-ppc64le", "linux-s390x",
 		"android-arm64",
+		"tamago-amd64",
 		"windows-amd64", "windows-386", "windows-arm64":
 		return true
 	}
@@ -1833,6 +1834,7 @@ func buildModeSupported(compiler, buildmode, goos, goarch string) bool {
 			"ios/amd64", "ios/arm64",
 			"aix/ppc64",
 			"openbsd/arm64",
+			"tamago/amd64",
 			"windows/386", "windows/amd64", "windows/arm64":
 			return true
 		}
