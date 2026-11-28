@@ -11,7 +11,6 @@
 #define SYS_mmap		9
 #define SYS_clone		56
 #define SYS_exit		60
-#define SYS_arch_prctl		158
 #define SYS_clock_gettime	228
 #define SYS_exit_group		231
 #define SYS_getrandom		318
@@ -120,12 +119,8 @@ nog1:
 	CMPQ	R9, $0    // g
 	JEQ	nog2
 
-	// In child, set up new stack
-	MOVQ	R9, g
-	MOVQ	g, DI
-	CALL	·settls<>(SB)
-	MOVQ	g, (TLS)
-
+	// In child, set up new stack. The kernel has set the FS base to the
+	// TLS block in m.tls (CLONE_SETTLS above), as in runtime/sys_linux_amd64.s.
 	MOVQ	TLS, CX
 	MOVQ	R13, 48(R9) // g_m(R9)
 	MOVQ	R9, 0(CX)(TLS*1)
@@ -140,14 +135,3 @@ nog2:
 	MOVL	$SYS_exit, AX
 	SYSCALL
 	JMP	-3(PC)	// keep exiting
-
-TEXT ·settls<>(SB),NOSPLIT,$0
-	ADDQ	$8, DI	// ELF wants to use -8(FS)
-	MOVQ	DI, SI
-	MOVQ	$0x1002, DI	// ARCH_SET_FS
-	MOVQ	$SYS_arch_prctl, AX
-	SYSCALL
-	CMPQ	AX, $0xfffffffffffff001
-	JLS	2(PC)
-	MOVL	$0xf1, 0xf1  // crash
-	RET
